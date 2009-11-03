@@ -1,0 +1,1035 @@
+<?php
+
+/**
+ * @file
+ * Defines a field type for referencing one node from another.
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function super_nodereference_menu() {
+  $items = array();
+  $items['super_nodereference/autocomplete'] = array(
+    'title' => 'Super Nodereference autocomplete',
+    'page callback' => 'super_nodereference_autocomplete',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK
+  );
+  $items['super_nodereference/ahah'] = array(
+    'title' => 'Administer Super Nodereference AHAH',
+    'page callback' => 'super_nodereference_ahah',
+    'access arguments' => array('administer content types'),
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+
+
+/**
+ * Implementation of hook_theme().
+ */
+function super_nodereference_theme() {
+  return array(
+    'super_nodereference_autocomplete' => array(
+      'arguments' => array('element' => NULL),
+    ),
+    'super_nodereference_formatter_default' => array(
+      'arguments' => array('element'),
+    ),
+    'super_nodereference_formatter_plain' => array(
+      'arguments' => array('element'),
+    ),
+    'super_nodereference_formatter_title_link' => array(
+      'arguments' => array('element'),
+    ),
+    'super_nodereference_formatter_title_plain' => array(
+      'arguments' => array('element'),
+    ),
+    'super_nodereference_formatter_full' => array(
+      'arguments' => array('element'),
+      'function' => 'theme_super_nodereference_formatter_full_teaser',
+    ),
+    'super_nodereference_formatter_teaser' => array(
+      'arguments' => array('element'),
+      'function' => 'theme_super_nodereference_formatter_full_teaser',
+    ),
+  );
+}
+
+
+/**
+ * Implementation of hook_field_info().
+ */
+function super_nodereference_field_info() {
+  return array(
+    'super_nodereference' => array(
+      'label' => t('Super Node reference'),
+      'description' => t('Store the ID of a related node as an integer value.'),
+      'content_icon' => 'icon_content_noderef.png',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_field_settings().
+ */
+function super_nodereference_field_settings($op, $field) {
+  switch ($op) {
+    case 'form':
+      $form = array();
+
+      $form['referenceable_types'] = array(
+        '#type' => 'checkboxes',
+        '#title' => t('Content types that can be referenced'),
+        '#multiple' => TRUE,
+        '#default_value' => is_array($field['referenceable_types']) ? $field['referenceable_types'] : array(),
+        '#options' => array_map('check_plain', node_get_types('names')),
+        '#ahah' => array(
+          'path' => 'super_nodereference/ahah',
+          'wrapper' => 'edit-primary-field-wrapper',
+        )
+      );
+      $form['primary_field'] = array(
+        '#type' => 'select',
+        '#title' => t('Select primary field'),
+        '#default_value' => $field['primary_field'],
+        '#options' => array('title'),
+        '#after_build' => array('super_nodereference_primary_field_options'),
+      );
+      $form['allow_text'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('If node doesn\'t exist allow plain text'),
+        '#default_value' => $field['allow_text'],
+      );
+
+      if (module_exists('views')) {
+        $views = array('--' => '--');
+        $all_views = views_get_all_views();
+        foreach ($all_views as $view) {
+          // Only 'node' views that have fields will work for our purpose.
+          if ($view->base_table == 'node' && !empty($view->display['default']->display_options['fields'])) {
+            if ($view->type == 'Default') {
+              $views[t('Default Views')][$view->name] = $view->name;
+            }
+            else {
+              $views[t('Existing Views')][$view->name] = $view->name;
+            }
+          }
+        }
+
+        $form['advanced'] = array(
+          '#type' => 'fieldset',
+          '#title' => t('Advanced - Nodes that can be referenced (View)'),
+          '#collapsible' => TRUE,
+          '#collapsed' => !isset($field['advanced_view']) || $field['advanced_view'] == '--',
+        );
+        $form['advanced']['advanced_view_help'] = array(
+          '#value' => t('<div class="description"><p>Note:</p>') .
+            '<ul><li>' . t('Only views that have fields will work for this purpose.') . '</li><li>' . 
+            t('This will discard the "Content types" settings above. Use the view\'s "filters" section instead.') . '</li><li>' . 
+            t('Use the view\'s "fields" section to display additional informations about candidate nodes on node creation/edition form.') . '</li><li>' .
+            t('Use the view\'s "sort criteria" section to determine the order in which candidate nodes will be displayed.') . '</li><li>' . 
+            t('If the view contains "Exposed Filters", the first exposed filter will be used by all lookup operations.  Otherwise, the primary field (specified above) will be used.') . '</li></ul></div>',
+          );
+        if (count($views) > 1) {
+          $form['advanced']['advanced_view'] = array(
+            '#type' => 'select',
+            '#title' => t('View used to select the nodes'),
+            '#options' => $views,
+            '#default_value' => isset($field['advanced_view']) ? $field['advanced_view'] : '--',
+            '#description' => t('<p>Choose the "Views module" view that selects the nodes that can be referenced.</p>'), 
+          );
+          $form['advanced']['advanced_view_args'] = array(
+            '#type' => 'textfield',
+            '#title' => t('View arguments'),
+            '#default_value' => isset($field['advanced_view_args']) ? $field['advanced_view_args'] : '',
+            '#required' => FALSE,
+            '#description' => t('Provide a comma separated list of arguments to pass to the view.'),
+          );
+        }
+        else {
+          $form['advanced']['no_view_help'] = array(
+            '#value' => t('<p>The list of nodes that can be referenced can be based on a "Views module" view but no appropriate views were found.</p>') 
+          );
+        }
+        
+      }
+      return $form;
+
+    case 'save':
+      $settings = array('referenceable_types', 'primary_field', 'allow_text');
+      if (module_exists('views')) {
+        $settings[] = 'advanced_view';
+        $settings[] = 'advanced_view_args';
+      }
+      return $settings;
+
+    case 'database columns':
+      $columns = array(
+        'value' => array('type' => 'varchar', 'length' => 255, 'not null' => FALSE, 'sortable' => TRUE),
+        'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE),
+      );
+      return $columns;
+
+    case 'views data':
+      $data = content_views_field_views_data($field);
+      $db_info = content_database_info($field);
+      $table_alias = content_views_tablename($field);
+      // Filter: swap the handler to the 'in' operator.
+      $data[$table_alias][$field['field_name'] .'_nid']['filter']['handler'] = 'content_handler_filter_many_to_one';
+      // Argument: use node.title for summaries.
+      $data["node_$table_alias"]['table']['join']['node'] = array(
+        'table' => 'node',
+        'field' => 'nid',
+        'left_table' => $table_alias,
+        'left_field' => $field['field_name'] .'_nid',
+      );
+      $data[$table_alias][$field['field_name'] .'_nid']['argument']['handler'] = 'content_handler_argument_reference';
+      $data[$table_alias][$field['field_name'] .'_nid']['argument']['name table'] = "node_$table_alias";
+      $data[$table_alias][$field['field_name'] .'_nid']['argument']['name field'] = 'title';
+      // Relationship: add a relationship for related node.
+      $data[$table_alias][$field['field_name'] .'_nid']['relationship'] = array(
+        'base' => 'node',
+        'field' => $db_info['columns']['nid']['column'],
+        'handler' => 'content_handler_relationship',
+        'label' => t($field['widget']['label']),
+        'content_field_name' => $field['field_name'],
+      );
+      return $data;
+  }
+}
+
+/**
+ * AHAH callback function used by the field settings form.
+ */
+function super_nodereference_ahah() {
+  include_once 'modules/node/node.pages.inc';
+  include_once drupal_get_path('module', 'content') . '/includes/content.admin.inc';
+
+  $form_state = array('rebuild' => TRUE);
+  $form_build_id = $_POST['form_build_id'];
+  $form = form_get_cache($form_build_id, $form_state);
+  $args = $form['#parameters'];
+  $form_id = array_shift($args);
+  $form_state['post'] = $form['#post'] = $_POST;
+  $form['#programmed'] = $form['#redirect'] = FALSE;
+
+  $form = drupal_rebuild_form($form_id, $form_state, $args, $form_build_id);
+  $primary_field = $form['field']['primary_field'];
+  $output = drupal_render($primary_field);
+  drupal_json(array('status' => TRUE, 'data' => $output));
+}
+
+/**
+ * #after_build callback to load primary_field options array
+ * @param $form_element
+ * @param $form_state
+ * @return form_element array
+ */
+function super_nodereference_primary_field_options($form_element, $form_state) {
+  // If the request is due to an AHAH callback, use the values from post.
+  if (isset($form_state['post'])) {
+    // Cast $form_state['post']['referenceable_types'] as array to avoid errors
+    // if referenceable_types is missing.
+    $referenced_types = array_filter((array)$form_state['post']['referenceable_types']);
+    $form_element['#value'] = $form_state['post']['primary_field'];
+  }
+  else {
+    $referenced_types = array_keys(array_filter($form_state['values']['referenceable_types']));
+  }
+  $form_element['#options'] = _super_nodereference_potential_fields($referenced_types);
+
+  return $form_element;
+}
+
+/**
+ * Retrieve a list of fields that are available in all content types specified
+ * @param $referenced_content_types
+ * @return array list of fields
+ */
+function _super_nodereference_potential_fields($referenced_content_types) {
+
+  if (empty($referenced_content_types)) {
+    $referenced_content_types = array_keys(content_types());
+  }
+  $all_fields = content_fields();
+  $fields = array_keys($all_fields);
+  foreach ($referenced_content_types as $content_type) {
+    $full_content_type = content_types((string)$content_type);
+    if (isset($full_content_type['fields'])) {
+      $fields = array_intersect($fields, array_keys($full_content_type['fields']));
+    }
+  }
+  // Add the title field.
+  array_unshift($fields, 'title');
+  // Assign matching keys and values.
+  $fields = array_combine($fields, $fields);
+  return $fields;
+}
+
+/**
+ * Implementation of hook_field().
+ */
+function super_nodereference_field($op, &$node, $field, &$items, $teaser, $page) {
+  switch ($op) {
+    // When preparing a translation, load any translations of existing references.
+    case 'prepare translation':
+      $addition = array();
+      $addition[$field['field_name']] = array();
+      if (isset($node->translation_source->$field['field_name']) && is_array($node->translation_source->$field['field_name'])) {
+        foreach ($node->translation_source->$field['field_name'] as $key => $reference) {
+          $reference_node = node_load($reference['nid']);
+          // Test if the referenced node type is translatable and, if so,
+          // load translations if the reference is not for the current language.
+          // We can assume the translation module is present because it invokes 'prepare translation'.
+          if (translation_supported_type($reference_node->type) && !empty($reference_node->language) && $reference_node->language != $node->language && $translations = translation_node_get_translations($reference_node->tnid)) {
+            // If there is a translation for the current language, use it.
+            $addition[$field['field_name']][] = array(
+              'nid' => isset($translations[$node->language]) ? $translations[$node->language]->nid : $reference['nid'],
+            );
+          }
+        }
+      }
+      return $addition;
+
+    case 'update':
+      foreach ($items as $delta => $item) {
+        $items[$delta] = _super_nodereference_text_to_array($item['value']);
+      }
+
+      return $items;
+  }
+}
+
+function _super_nodereference_text_to_array($value) {
+  preg_match('/^(?:\s*|(.*) )?\[\s*nid\s*:\s*(\d+)\s*\]$/', $value, $matches);
+  if (!empty($matches)) {
+    // Explicit [nid:##].
+    list(, $value, $nid) = $matches;
+  }
+
+  return array(
+    'value' => $value,
+    'nid' => $nid,
+  );
+}
+
+function _super_nodereference_array_to_text($value) {
+  $text_value = $value['value'];
+  if (!empty($value['nid'])) {
+    $text_value .= ' [nid:'. $value['nid'] .']';
+  }
+  return $text_value;
+}
+
+
+/**
+ * Implementation of hook_content_is_empty().
+ */
+function super_nodereference_content_is_empty($item, $field) {
+  if (empty($item['nid']) && empty($item['value'])) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Implementation of hook_field_formatter_info().
+ */
+function super_nodereference_field_formatter_info() {
+  return array(
+    'default' => array(
+      'label' => t('Primary Field/View (link)'),
+      'field types' => array('super_nodereference'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'plain' => array(
+      'label' => t('Primary Field/View (no link)'),
+      'field types' => array('super_nodereference'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'title_link' => array(
+      'label' => t('Title (link)'),
+      'field types' => array('super_nodereference'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'title_plain' => array(
+      'label' => t('Title (no link)'),
+      'field types' => array('super_nodereference'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'full' => array(
+      'label' => t('Full node'),
+      'field types' => array('super_nodereference'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'teaser' => array(
+      'label' => t('Teaser'),
+      'field types' => array('super_nodereference'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+  );
+}
+
+/**
+ * Theme function for 'default' nodereference field formatter.
+ */
+function theme_super_nodereference_formatter_default($element) {
+  $output = '';
+  $nid = $element['#item']['nid'];
+  if (!empty($nid)) {
+    $node = node_load($nid);
+    $field = content_fields($element['#field_name'], $element['#type_name']);
+    $title = _super_nodereference_potential_references($field, '', 'equals', array($nid), 1);
+    $output = l($title[$nid]['rendered'], $node->path, array('html' => TRUE));
+//    $output = $title[$nid]['rendered'];
+  }
+  else {
+    $output = check_plain($element['#item']['value']);
+  }
+  return $output;
+}
+
+/**
+ * Theme function for 'plain' nodereference field formatter.
+ */
+function theme_super_nodereference_formatter_plain($element) {
+  $nid = $element['#item']['nid'];
+  if (!empty($nid)) {
+    $node = node_load($nid);
+    $field = content_fields($element['#field_name'], $element['#type_name']);
+    $title = _super_nodereference_potential_references($field, '', 'equals', array($nid), 1);
+    $output = $title[$nid]['rendered'];
+  }
+  else {
+    $output = check_plain($element['#item']['value']);
+  }
+  return $output;
+}
+
+/**
+ * Theme function for 'default' nodereference field formatter.
+ */
+function theme_super_nodereference_formatter_title_link($element) {
+  $output = '';
+  $nid = $element['#item']['nid'];
+  if (!empty($nid)) {
+    $node = node_load($nid);
+    $title = _super_nodereference_title($nid);
+    $output = l($title, $node->path);
+  }
+  else {
+    $output = check_plain($element['#item']['value']);
+  }
+  return $output;
+}
+
+/**
+ * Theme function for 'default' nodereference field formatter.
+ */
+function theme_super_nodereference_formatter_title_plain($element) {
+  $output = '';
+  $nid = $element['#item']['nid'];
+  if (!empty($nid)) {
+    $node = node_load($nid);
+    $title = _super_nodereference_title($nid);
+    $output = check_plain($title);
+  }
+  else {
+    $output = check_plain($element['#item']['value']);
+  }
+  return $output;
+}
+
+/**
+ * Proxy theme function for 'full' and 'teaser' nodereference field formatters.
+ */
+function theme_super_nodereference_formatter_full_teaser($element) {
+  static $recursion_queue = array();
+  $output = '';
+  if (!empty($element['#item']['nid']) && is_numeric($element['#item']['nid'])) {
+    $node = $element['#node'];
+    $field = content_fields($element['#field_name'], $element['#type_name']);
+    // If no 'referencing node' is set, we are starting a new 'reference thread'
+    if (!isset($node->referencing_node)) {
+      $recursion_queue = array();
+    }
+    $recursion_queue[] = $node->nid;
+    if (in_array($element['#item']['nid'], $recursion_queue)) {
+      // Prevent infinite recursion caused by reference cycles:
+      // if the node has already been rendered earlier in this 'thread',
+      // we fall back to 'default' (node title) formatter.
+      return theme('nodereference_formatter_default', $element);
+    }
+    if ($referenced_node = node_load($element['#item']['nid'])) {
+      $referenced_node->referencing_node = $node;
+      $referenced_node->referencing_field = $field;
+      $output = node_view($referenced_node, $element['#formatter'] == 'teaser');
+    }
+  }
+  else {
+    $output = check_plain($element['#item']['value']);
+  }
+  return $output;
+}
+
+/**
+ * Helper function for formatters.
+ *
+ * Store node titles collected in the curent request.
+ */
+function _super_nodereference_title($nid, $known_title = NULL) {
+  static $titles = array();
+  if (!isset($titles[$nid])) {
+    $title = $known_title ? $known_title : db_result(db_query("SELECT title FROM {node} WHERE nid=%d", $nid));
+    $titles[$nid] = $title ? $title : '';
+  }
+  return $titles[$nid];
+}
+
+/**
+ * Implementation of hook_widget_info().
+ *
+ * We will use the content module's default handling for default value.
+ */
+function super_nodereference_widget_info() {
+  return array(
+    'super_nodereference_autocomplete' => array(
+      'label' => t('Autocomplete text field'),
+      'field types' => array('super_nodereference'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+  );
+}
+
+/**
+ * Implementation of FAPI hook_elements().
+ *
+ * Any FAPI callbacks needed for individual widgets can be declared here,
+ * and the element will be passed to those callbacks for processing.
+ *
+ * Drupal will automatically theme the element using a theme with
+ * the same name as the hook_elements key.
+ *
+ * Autocomplete_path is not used by text_widget but other widgets can use it
+ * (see nodereference and userreference).
+ */
+function super_nodereference_elements() {
+  return array(
+    'super_nodereference_autocomplete' => array(
+      '#input' => TRUE,
+      '#columns' => array('name'), '#delta' => 0,
+      '#process' => array('super_nodereference_autocomplete_process'),
+      '#autocomplete_path' => FALSE,
+      ),
+    );
+}
+
+/**
+ * Implementation of hook_widget_settings().
+ */
+function super_nodereference_widget_settings($op, $widget) {
+  switch ($op) {
+    case 'form':
+      $form = array();
+      $match = isset($widget['autocomplete_match']) ? $widget['autocomplete_match'] : 'contains';
+      $size = (isset($widget['size']) && is_numeric($widget['size'])) ? $widget['size'] : 60;
+      if ($widget['type'] == 'super_nodereference_autocomplete') {
+        $form['autocomplete_match'] = array(
+          '#type' => 'select',
+          '#title' => t('Autocomplete matching'),
+          '#default_value' => $match,
+          '#options' => array(
+            'starts_with' => t('Starts with'),
+            'contains' => t('Contains'),
+          ),
+          '#description' => t('Select the method used to collect autocomplete suggestions. Note that <em>Contains</em> can cause performance issues on sites with thousands of nodes.'),
+        );
+        $form['size'] = array(
+          '#type' => 'textfield',
+          '#title' => t('Size of textfield'),
+          '#default_value' => $size,
+          '#element_validate' => array('_element_validate_integer_positive'),
+          '#required' => TRUE,
+        );
+      }
+      else {
+        $form['autocomplete_match'] = array('#type' => 'hidden', '#value' => $match);
+        $form['size'] = array('#type' => 'hidden', '#value' => $size);
+      }
+      return $form;
+
+    case 'save':
+      return array('autocomplete_match', 'size');
+  }
+}
+
+/**
+ * Implementation of hook_widget().
+ *
+ * Attach a single form element to the form. It will be built out and
+ * validated in the callback(s) listed in hook_elements. We build it
+ * out in the callbacks rather than here in hook_widget so it can be
+ * plugged into any module that can provide it with valid
+ * $field information.
+ *
+ * Content module will set the weight, field name and delta values
+ * for each form element. This is a change from earlier CCK versions
+ * where the widget managed its own multiple values.
+ *
+ * If there are multiple values for this field, the content module will
+ * call this function as many times as needed.
+ *
+ * @param $form
+ *   the entire form array, $form['#node'] holds node information
+ * @param $form_state
+ *   the form_state, $form_state['values'][$field['field_name']]
+ *   holds the field's form values.
+ * @param $field
+ *   the field array
+ * @param $items
+ *   array of default values for this field
+ * @param $delta
+ *   the order of this item in the array of subelements (0, 1, 2, etc)
+ *
+ * @return
+ *   the form item for a single element for this field
+ */
+function super_nodereference_widget(&$form, &$form_state, $field, $items, $delta = 0) {
+  switch ($field['widget']['type']) {
+    case 'super_nodereference_autocomplete':
+      $element = array(
+        '#type' => 'super_nodereference_autocomplete',
+        '#default_value' => isset($items[$delta]) ? $items[$delta] : NULL,
+        '#value_callback' => 'super_nodereference_autocomplete_value',
+      );
+      break;
+  }
+  return $element;
+}
+
+/**
+ * Default value for a nodereference autocomplete element.
+ *
+ * Populate the default value in the format "Primary Field [nid:###]"
+ */
+function super_nodereference_autocomplete_value($element, $edit = FALSE) {
+  $fields = content_fields();
+  $field = $fields[$element['#field_name']];
+  if (!empty($element['#default_value']['nid'])) {
+    $nid = $element['#default_value']['nid'];
+    $potential_references = _super_nodereference_potential_references($field, '', 'equals', array($nid), 1);
+    $return = _super_nodereference_array_to_text(array(
+      'nid' => $nid,
+      'value' => $potential_references[$nid]['title'],
+    ));
+    return array('value' => $return);
+  }
+  else {
+    return array('value' => $element['#default_value']['value']);
+  }
+}
+
+/**
+ * Process an individual element.
+ *
+ * Build the form element. When creating a form using FAPI #process,
+ * note that $element['#value'] is already set.
+ *
+ */
+function super_nodereference_autocomplete_process($element, $edit, $form_state, $form) {
+  // The nodereference autocomplete widget doesn't need to create its own
+  // element, it can wrap around the text_textfield element and add an autocomplete
+  // path and some extra processing to it.
+  // Add a validation step where the value can be unwrapped.
+  $field_key  = $element['#columns'][0];
+
+  $element[$field_key] = array(
+    '#type' => 'text_textfield',
+    '#default_value' => isset($element['#value']) ? $element['#value'] : '',
+    '#autocomplete_path' => 'super_nodereference/autocomplete/'. $element['#field_name'],
+    // The following values were set by the content module and need
+    // to be passed down to the nested element.
+    '#title' => $element['#title'],
+    '#required' => $element['#required'],
+    '#description' => $element['#description'],
+    '#field_name' => $element['#field_name'],
+    '#type_name' => $element['#type_name'],
+    '#delta' => $element['#delta'],
+    '#columns' => $element['#columns'],
+  );
+  if (empty($element[$field_key]['#element_validate'])) {
+    $element[$field_key]['#element_validate'] = array();
+  }
+  // Execute own validate function first.
+  array_unshift($element[$field_key]['#element_validate'], 'super_nodereference_autocomplete_validate');
+
+  // Used so that super_nodereference_autocomplete_validate knows where to flag an error.
+  $element['_error_element'] = array(
+    '#type' => 'value',
+    // Wrapping the element around a text_textfield element creates a
+    // nested element, so the final id will look like 'field-name-0-nid-nid'.
+    '#value' => implode('][', array_merge($element['#parents'], array($field_key, $field_key))),
+  );
+  return $element;
+}
+
+/**
+ * Validate an autocomplete element.
+ *
+ * Parse and validate form field value to a valid 'nid' and 'value'.  Then set
+ * the form value to a validated string in the form of 'value [nid: ##]'
+ */
+function super_nodereference_autocomplete_validate($element, &$form_state) {
+  $field_name = $element['#field_name'];
+  $type_name = $element['#type_name'];
+  $field = content_fields($field_name, $type_name);
+  $field_key  = $element['#columns'][0];
+  $delta = $element['#delta'];
+  $value = $element['#value'][$field_key];
+   watchdog('test', 'validate: %value', array('%value' => var_export($value, TRUE)));
+  $nid = NULL;
+  $validated = array('value' => '', 'nid' => '');
+  if (!empty($value)) {
+    // Parse form text into array with 'value' and 'nid'
+    $match = _super_nodereference_text_to_array($value);
+    $text = $match['value'];
+    $nid = $match['nid'];
+
+    if (!empty($nid)) { // The value contains [nid:##]
+      //list(, $text, $nid) = $matches;
+      $potential_references = _super_nodereference_potential_references($field, '', 'equals', array($nid), 1);
+      if (!empty($text) && $potential_references[$nid]['title'] != $text) {
+        $error_element = isset($item['_error_element']) ? $item['_error_element'] : '';
+        form_set_error($error_element, t('%name: text mismatch. Please check your selection.',
+          array('%name' => t($field['widget']['label']))));
+      }
+      else { // there is no text ($value == "[nid:##]") or the text 
+        // matches a valid primary field
+        $validated['value'] = $potential_references[$nid]['title'];
+        $validated['nid'] = $nid;
+      }
+    }
+    else { // The value does not contain [nid:##]
+dsm($text);
+//      $potential_references = _super_nodereference_potential_references($field, $text, 'equals', NULL, 10);
+      $potential_references = _super_nodereference_potential_references($field, $text, 'contains', array(), 10);
+      //$potential_references = _super_nodereference_potential_references($field, $string, $match, array(), 10);      
+dsm($potential_references);
+      // If the nid isn't specified, use the first matching entry.  Using
+      // Views, the sort order can be set to control how this is handled.
+      $reference = array_slice($potential_references, 0, 1, TRUE);
+      if (!empty($reference)) {
+        $validated['nid'] = key($reference);
+        $validated['value'] = $reference[$validated['nid']]['title'];
+      }
+      else if (!empty($field['allow_text'])) {
+        $validated['value'] = $value;
+      }
+      else {
+        $error_element = isset($item['_error_element']) ? $item['_error_element'] : '';
+        form_set_error($error_element, t('%name: valid record not found. Please check your selection.',
+          array('%name' => t($field['widget']['label']))));
+      }
+    }
+  }
+  form_set_value($element, _super_nodereference_array_to_text($validated), $form_state);
+  
+}
+
+/**
+ * Fetch an array of all candidate referenced nodes.
+ *
+ * This info is used in various places (allowed values, autocomplete results,
+ * input validation...). Some of them only need the nids, others nid + titles,
+ * others yet nid + titles + rendered row (for display in widgets).
+ * The array we return contains all the potentially needed information, and lets
+ * consumers use the parts they actually need.
+ *
+ * @param $field
+ *   The field description.
+ * @param $string
+ *   Optional string to filter titles on (used by autocomplete).
+ * @param $match
+ *   Operator to match filtered name against, can be any of:
+ *   'contains', 'equals', 'starts_with'
+ * @param $ids
+ *   Optional node ids to lookup (the $string and $match arguments will be
+ *   ignored).
+ * @param $limit
+ *   If non-zero, limit the size of the result set.
+ *
+ * @return
+ *   An array of valid nodes in the form:
+ *   array(
+ *     nid => array(
+ *       'title' => The node title,
+ *       'rendered' => The text to display in widgets (can be HTML)
+ *     ),
+ *     ...
+ *   )
+ */
+function _super_nodereference_potential_references($field, $string = '', $match = 'contains', $ids = array(), $limit = NULL) {
+  static $results = array();
+
+  // Create unique id for static cache.
+  $cid = $field['field_name'] .':'. $match .':'. ($string !== '' ? $string : implode('-', $ids)) .':'. $limit;
+  watchdog('test', 'field1cid: %value', array('%value' => var_export($cid, TRUE)));
+  watchdog('test', 'field1results: %value', array('%value' => var_export($results, TRUE)));
+  if (!isset($results[$cid])) {
+    $references = FALSE;
+    if (module_exists('views') && !empty($field['advanced_view']) && $field['advanced_view'] != '--') {
+      $references = _super_nodereference_potential_references_views($field, $string, $match, $ids, $limit);
+    }
+    // If the view doesn't exist, we got FALSE, and fallback to the regular 'standard mode'.
+
+    if ($references === FALSE) {
+      $references = _super_nodereference_potential_references_standard($field, $string, $match, $ids, $limit);
+    }
+
+    // Store the results.
+    $results[$cid] = !empty($references) ? $references : array();
+  }
+  return $results[$cid];
+}
+
+/**
+ * Helper function for _nodereference_potential_references():
+ * case of Views-defined referenceable nodes.
+ */
+function _super_nodereference_potential_references_views($field, $string = '', $match = 'contains', $ids = array(), $limit = NULL) {
+  $view_name = $field['advanced_view'];
+  if ($view = views_get_view($view_name)) {
+    // We add a display, and let it derive from the 'default' display.
+    $display = $view->add_display('content_references');
+    $view->set_display($display);
+    //$view->display_handler->
+    // TODO from merlinofchaos on IRC : arguments using summary view can defeat the style setting.
+    // We might also need to check if there's an argument, and set *its* style_plugin as well.
+    $view->display_handler->set_option('style_plugin', 'content_php_array_autocomplete');
+    $view->display_handler->set_option('row_plugin', 'fields');
+watchdog('test', 'snprv_string: %value', array('%value' => var_export($string, TRUE)));
+    $fields = $view->display['default']->display_options['fields'];
+    // Look for exposed filters on this view.
+    $filters = $view->get_items('filter');
+    $use_exposed_filter = FALSE;
+    foreach ($filters as $filter) {
+      if ($filter['exposed']) {
+        $use_exposed_filter = $filter;
+        break;
+      }
+    }
+
+    if (!empty($use_exposed_filter)) { // We are using an exposed filter
+      $use_exposed_filter['value'] = (string)$string;
+      $view->set_item($display, 'filter', $use_exposed_filter['id'], $use_exposed_filter);
+
+      $view->display_handler->set_option('content_title_field', $use_exposed_filter['field']);
+      // content_plugin_display_references attempts to add a filter if 'string' is not ''.
+      $options = array(
+        'table' => 'node',  // Used only when $ids are specified.
+        'string' => '', // content_plugin_display_references attempts to add a
+          // filter if 'string' is not ''.
+        'field_id' => 'nid', // Used only when $ids are specified.
+        'ids' => $ids, // Used only when $ids are specified.
+      );
+      $view->display_handler->set_option('content_options', $options);
+    }
+
+    else { // There is no exposed filter, add filter using the primary field.
+      if (!$fields[$field['primary_field']]) {
+        // TODO: add primary field
+      }
+      $referenced_field = $fields[$field['primary_field']];
+      // Used in content_plugin_style_php_array::render(), to get
+      // the 'field' to be used as title.
+      $view->display_handler->set_option('content_title_field', $referenced_field['id']);
+
+      // Additional options to let content_plugin_display_references::query()
+      // narrow the results.
+      $options = array(
+        'table' => $referenced_field['table'], // Table to search
+        'field_string' => $referenced_field['field'], // Field to search
+        'string' => $string, // Search string
+        'match' => $match,
+        'field_id' => 'nid',
+        'ids' => $ids,
+      );
+      $view->display_handler->set_option('content_options', $options);
+    }
+
+    // TODO : for consistency, a fair amount of what's below
+    // should be moved to content_plugin_display_references
+
+    // Limit result set size.
+    if (isset($limit)) {
+      $view->display_handler->set_option('items_per_page', $limit);
+    }
+
+    // Get arguments for the view.
+    if (!empty($field['advanced_view_args'])) {
+      // TODO: Support Tokens using token.module ?
+      $view_args = array_map('trim', explode(',', $field['advanced_view_args']));
+    }
+    else {
+      $view_args = array();
+    }
+
+    // If not set, make all fields inline and define a separator.
+    $options = $view->display_handler->get_option('row_options');
+    if (empty($options['inline'])) {
+      $options['inline'] = drupal_map_assoc(array_keys($view->get_items('field', $display)));
+    }
+    if (empty($options['separator'])) {
+      $options['separator'] = '-';
+    }
+    $view->display_handler->set_option('row_options', $options);
+
+    // Make sure the query is not cached
+    $view->is_cacheable = FALSE;
+
+    // Get the results.
+    $result = $view->execute_display($display, $view_args);
+  }
+  else {
+    $result = FALSE;
+  }
+
+  return $result;
+}
+
+/**
+ * Helper function for _nodereference_potential_references():
+ * referenceable nodes defined by content types.
+ */
+function _super_nodereference_potential_references_standard($field, $string = '', $match = 'contains', $ids = array(), $limit = NULL) {
+  $related_types = array();
+  $where = array();
+  $args = array();
+  if (is_array($field['referenceable_types'])) {
+    foreach (array_filter($field['referenceable_types']) as $related_type) {
+      $related_types[] = "n.type = '%s'";
+      $args[] = $related_type;
+    }
+  }
+
+  $where[] = implode(' OR ', $related_types);
+
+  if (!count($related_types)) {
+    return array();
+  }
+  $test = content_database_info(content_fields($field['primary_field']));
+  $primary_field = $test['columns']['value']['column'];
+  $primary_table = $test['table'];
+
+  if ($string !== '') {
+    $match_operators = array(
+      'contains' => "LIKE '%%%s%%'",
+      'equals' => "= '%s'",
+      'starts_with' => "LIKE '%s%%'",
+    );
+
+
+
+    $where[] = "f.$primary_field ". (isset($match_operators[$match]) ? $match_operators[$match] : $match_operators['contains']);
+    $args[] = $string;
+  }
+  elseif ($ids) {
+    $where[] = 'n.nid IN (' . db_placeholders($ids) . ')';
+    $args = array_merge($args, $ids);
+  }
+
+  $where_clause = $where ? 'WHERE ('. implode(') AND (', $where) .')' : '';
+
+  $sql = "SELECT n.nid AS node_nid, f.$primary_field AS node_field,
+    n.type AS node_type FROM {node} n JOIN {$primary_table} f ON
+    (n.nid = f.nid AND n.vid = f.vid) $where_clause ORDER BY f.$primary_field, n.type";// WHERE f.field_ecn_number_value LIKE "09-D-1%"
+  $sql = db_rewrite_sql($sql);
+  $result = $limit ? db_query_range($sql, $args, 0, $limit) : db_query($sql, $args);
+  $references = array();
+  while ($node = db_fetch_object($result)) {
+    $references[$node->node_nid] = array(
+      'title' => $node->node_field,
+      'rendered' => check_plain($node->node_field),
+    );
+  }
+  return $references;
+}
+
+/**
+ * Menu callback; Retrieve a pipe delimited string of autocomplete suggestions for existing users
+ */
+function super_nodereference_autocomplete($field_name, $string = '') {
+  $fields = content_fields();
+  $field = $fields[$field_name];
+  $match = isset($field['widget']['autocomplete_match']) ? $field['widget']['autocomplete_match'] : 'contains';
+  $matches = array();
+
+  $references = _super_nodereference_potential_references($field, $string, $match, array(), 10);
+  foreach ($references as $id => $row) {
+    // Add a class wrapper for a few required CSS overrides.
+    $matches[$row['title'] ." [nid:$id]"] = '<div class="reference-autocomplete">'. $row['rendered'] . '</div>';
+  }
+  drupal_json($matches);
+}
+//
+///**
+// * Implementation of hook_node_type.
+// */
+//function super_nodereference_node_type($op, $info) {
+//  switch ($op) {
+//    case 'update':
+//      // Reflect type name changes to the 'referenceable types' settings.
+//      if (!empty($info->old_type) && $info->old_type != $info->type) {
+//        // content.module's implementaion of hook_node_type() has already
+//        // refreshed _content_type_info().
+//        $fields = content_fields();
+//        foreach ($fields as $field_name => $field) {
+//          if ($field['type'] == 'super_nodereference' && isset($field['referenceable_types'][$info->old_type])) {
+//            $field['referenceable_types'][$info->type] = empty($field['referenceable_types'][$info->old_type]) ? 0 : $info->type;
+//            unset($field['referenceable_types'][$info->old_type]);
+//            content_field_instance_update($field);
+//          }
+//        }
+//      }
+//      break;
+//  }
+//}
+//
+//
+//
+///**
+// * Theme preprocess function.
+// *
+// * Allows specific node templates for nodes displayed as values of a
+// * nodereference field with the 'full node' / 'teaser' formatters.
+// */
+//function super_nodereference_preprocess_node(&$vars) {
+//  // The 'referencing_field' attribute of the node is added by the 'teaser'
+//  // and 'full node' formatters.
+//  if (!empty($vars['node']->referencing_field)) {
+//    $node = $vars['node'];
+//    $field = $node->referencing_field;
+//    $vars['template_files'][] = 'node-nodereference';
+//    $vars['template_files'][] = 'node-nodereference-'. $field['field_name'];
+//    $vars['template_files'][] = 'node-nodereference-'. $node->type;
+//    $vars['template_files'][] = 'node-nodereference-'. $field['field_name'] .'-'. $node->type;
+//  }
+//}
+
+/**
+ * FAPI theme for an individual elements.
+ *
+ * The textfield or select is already rendered by the
+ * textfield or select themes and the html output
+ * lives in $element['#children']. Override this theme to
+ * make custom changes to the output.
+ *
+ * $element['#field_name'] contains the field name
+ * $element['#delta]  is the position of this element in the group
+ */
+function theme_super_nodereference_autocomplete($element) {
+  return $element['#children'];
+}
