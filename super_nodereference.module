@@ -819,10 +819,6 @@ function _super_nodereference_potential_references_views($field, $string = '', $
   $primary_field = $test['columns']['value']['column'];
   $primary_table = $fields[$primary_field]['table'];
     
-//watchdog('test', 'snprv_string: %value', array('%value' => var_export($string, TRUE)));
-    
-
-
     
     watchdog('test', 'snprv_field: %value', array('%value' => var_export((array)$fields, TRUE)));
     // Look for exposed filters on this view.
