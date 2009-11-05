@@ -500,6 +500,9 @@ function super_nodereference_widget_info() {
       'label' => t('Autocomplete text field'),
       'field types' => array('super_nodereference'),
       'multiple values' => CONTENT_HANDLE_CORE,
+      'callbacks' => array(
+        'default value' => CONTENT_CALLBACK_DEFAULT,
+      ),            
     ),
   );
 }
@@ -810,8 +813,18 @@ function _super_nodereference_potential_references_views($field, $string = '', $
     // We might also need to check if there's an argument, and set *its* style_plugin as well.
     $view->display_handler->set_option('style_plugin', 'content_php_array_autocomplete');
     $view->display_handler->set_option('row_plugin', 'fields');
-watchdog('test', 'snprv_string: %value', array('%value' => var_export($string, TRUE)));
+    
     $fields = $view->display['default']->display_options['fields'];
+     $test = content_database_info(content_fields($field['primary_field']));
+  $primary_field = $test['columns']['value']['column'];
+  $primary_table = $fields[$primary_field]['table'];
+    
+//watchdog('test', 'snprv_string: %value', array('%value' => var_export($string, TRUE)));
+    
+
+
+    
+    watchdog('test', 'snprv_field: %value', array('%value' => var_export((array)$fields, TRUE)));
     // Look for exposed filters on this view.
     $filters = $view->get_items('filter');
     $use_exposed_filter = FALSE;
@@ -842,16 +855,18 @@ watchdog('test', 'snprv_string: %value', array('%value' => var_export($string, T
       if (!$fields[$field['primary_field']]) {
         // TODO: add primary field
       }
+      watchdog('test', 'primary_field: %value', array('%value' => var_export($primary_field, TRUE)));
+      watchdog('test', 'primary_table: %value', array('%value' => var_export($primary_table, TRUE)));
       $referenced_field = $fields[$field['primary_field']];
       // Used in content_plugin_style_php_array::render(), to get
       // the 'field' to be used as title.
-      $view->display_handler->set_option('content_title_field', $referenced_field['id']);
+      $view->display_handler->set_option('content_title_field', $primary_field);
 
       // Additional options to let content_plugin_display_references::query()
       // narrow the results.
       $options = array(
-        'table' => $referenced_field['table'], // Table to search
-        'field_string' => $referenced_field['field'], // Field to search
+        'table' => empty($ids) ? $primary_table : 'node', // Table to search
+        'field_string' => $primary_field, // Field to search
         'string' => $string, // Search string
         'match' => $match,
         'field_id' => 'nid',
