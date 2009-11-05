@@ -840,7 +840,9 @@ function _super_nodereference_potential_references_views($field, $string = '', $
       $options = array(
         'table' => 'node',  // Used only when $ids are specified.
         'string' => '', // content_plugin_display_references attempts to add a
-          // filter if 'string' is not ''.
+        'field_string' => '',
+        'match' => '',
+      // filter if 'string' is not ''.
         'field_id' => 'nid', // Used only when $ids are specified.
         'ids' => $ids, // Used only when $ids are specified.
       );
@@ -851,8 +853,8 @@ function _super_nodereference_potential_references_views($field, $string = '', $
       if (!$fields[$field['primary_field']]) {
         // TODO: add primary field
       }
-      watchdog('test', 'primary_field: %value', array('%value' => var_export($primary_field, TRUE)));
-      watchdog('test', 'primary_table: %value', array('%value' => var_export($primary_table, TRUE)));
+//      watchdog('test', 'primary_field: %value', array('%value' => var_export($primary_field, TRUE)));
+//      watchdog('test', 'primary_table: %value', array('%value' => var_export($primary_table, TRUE)));
       $referenced_field = $fields[$field['primary_field']];
       // Used in content_plugin_style_php_array::render(), to get
       // the 'field' to be used as title.
@@ -900,7 +902,7 @@ function _super_nodereference_potential_references_views($field, $string = '', $
 
     // Make sure the query is not cached
     $view->is_cacheable = FALSE;
-
+watchdog('test', 'primary_field: %value', array('%value' => var_export(serialize($view), TRUE)));
     // Get the results.
     $result = $view->execute_display($display, $view_args);
   }
