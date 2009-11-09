@@ -833,7 +833,8 @@ function _super_nodereference_potential_references_views($field, $string = '', $
 
     if (!empty($use_exposed_filter)) { // We are using an exposed filter
       $use_exposed_filter['value'] = (string)$string;
-      $view->set_item($display, 'filter', $use_exposed_filter['id'], $use_exposed_filter);
+//      $view->set_item($display, 'filter', $use_exposed_filter['id'], $use_exposed_filter);
+      $view->exposed_input[$primary_field] = (string)$string;
 
       $view->display_handler->set_option('content_title_field', $use_exposed_filter['field']);
       // content_plugin_display_references attempts to add a filter if 'string' is not ''.
