@@ -717,9 +717,8 @@ function super_nodereference_autocomplete_validate($element, &$form_state) {
     }
     else { // The value does not contain [nid:##]
 dsm($text);
-//      $potential_references = _super_nodereference_potential_references($field, $text, 'equals', NULL, 10);
-      $potential_references = _super_nodereference_potential_references($field, $text, 'contains', array(), 10);
-      //$potential_references = _super_nodereference_potential_references($field, $string, $match, array(), 10);      
+      $potential_references = _super_nodereference_potential_references($field, $text, 'equals', NULL, 1);
+//      $potential_references = _super_nodereference_potential_references($field, $text, 'contains', array(), 10);
 dsm($potential_references);
       // If the nid isn't specified, use the first matching entry.  Using
       // Views, the sort order can be set to control how this is handled.
@@ -804,19 +803,23 @@ function _super_nodereference_potential_references($field, $string = '', $match 
  */
 function _super_nodereference_potential_references_views($field, $string = '', $match = 'contains', $ids = array(), $limit = NULL) {
   $view_name = $field['advanced_view'];
-  if ($view = views_get_view($view_name)) {
-    // We add a display, and let it derive from the 'default' display.
-    $display = $view->add_display('content_references');
-    $view->set_display($display);
-    //$view->display_handler->
-    // TODO from merlinofchaos on IRC : arguments using summary view can defeat the style setting.
-    // We might also need to check if there's an argument, and set *its* style_plugin as well.
-    $view->display_handler->set_option('style_plugin', 'content_php_array_autocomplete');
-    $view->display_handler->set_option('row_plugin', 'fields');
-    
-    $fields = $view->display['default']->display_options['fields'];
-     $test = content_database_info(content_fields($field['primary_field']));
-  $primary_field = $test['columns']['value']['column'];
+  $view = views_get_view($view_name);
+  if (empty($view)) { 
+    // The specified view is not valid.
+    return FALSE;
+  }
+  
+  // We add a display, and let it derive from the 'default' display.
+  $display = $view->add_display('content_references');
+  $view->set_display($display);
+  // TODO from merlinofchaos on IRC : arguments using summary view can defeat the style setting.
+  // We might also need to check if there's an argument, and set *its* style_plugin as well.
+  $view->display_handler->set_option('style_plugin', 'content_php_array_autocomplete');
+  $view->display_handler->set_option('row_plugin', 'fields');
+  
+  $fields = $view->display['default']->display_options['fields'];
+  $field_info = content_database_info(content_fields($field['primary_field']));
+  $primary_field = $field_info['columns']['value']['column'];
   $primary_table = $fields[$primary_field]['table'];
     
     
@@ -832,10 +835,17 @@ function _super_nodereference_potential_references_views($field, $string = '', $
     }
 
     if (!empty($use_exposed_filter)) { // We are using an exposed filter
-      $use_exposed_filter['value'] = (string)$string;
+//      $use_exposed_filter['operator'] = (string)$match;
 //      $view->set_item($display, 'filter', $use_exposed_filter['id'], $use_exposed_filter);
-      $view->exposed_input[$primary_field] = (string)$string;
-
+//      $view->exposed_input[$primary_field] = (string)$string;
+      $operators = array(
+        'equals' => '=',
+        'contains' => 'contains',
+        'starts_with' => 'starts',
+      );
+      $view->exposed_input[$use_exposed_filter['expose']['identifier']] = (string)$string;
+      $view->exposed_input[$use_exposed_filter['expose']['operator']] = $operators[(string)$match];
+ 
       $view->display_handler->set_option('content_title_field', $use_exposed_filter['field']);
       // content_plugin_display_references attempts to add a filter if 'string' is not ''.
       $options = array(
@@ -906,11 +916,7 @@ function _super_nodereference_potential_references_views($field, $string = '', $
 watchdog('test', 'primary_field: %value', array('%value' => var_export(serialize($view), TRUE)));
     // Get the results.
     $result = $view->execute_display($display, $view_args);
-  }
-  else {
-    $result = FALSE;
-  }
-
+    
   return $result;
 }
 
