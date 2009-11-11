@@ -822,100 +822,91 @@ function _super_nodereference_potential_references_views($field, $string = '', $
   $primary_field = $field_info['columns']['value']['column'];
   $primary_table = $fields[$primary_field]['table'];
     
-    
-    watchdog('test', 'snprv_field: %value', array('%value' => var_export((array)$fields, TRUE)));
-    // Look for exposed filters on this view.
-    $filters = $view->get_items('filter');
-    $use_exposed_filter = FALSE;
-    foreach ($filters as $filter) {
-      if ($filter['exposed']) {
-        $use_exposed_filter = $filter;
-        break;
-      }
+  // Look for exposed filters on this view.
+  $filters = $view->get_items('filter');
+  foreach ($filters as $filter) {
+    if ($filter['exposed']) {
+      $use_exposed_filter = $filter;
+      break;
     }
+  }
 
-    if (!empty($use_exposed_filter)) { // We are using an exposed filter
-//      $use_exposed_filter['operator'] = (string)$match;
-//      $view->set_item($display, 'filter', $use_exposed_filter['id'], $use_exposed_filter);
-//      $view->exposed_input[$primary_field] = (string)$string;
-      $operators = array(
-        'equals' => '=',
-        'contains' => 'contains',
-        'starts_with' => 'starts',
-      );
-      $view->exposed_input[$use_exposed_filter['expose']['identifier']] = (string)$string;
-      $view->exposed_input[$use_exposed_filter['expose']['operator']] = $operators[(string)$match];
- 
-      $view->display_handler->set_option('content_title_field', $use_exposed_filter['field']);
-      // content_plugin_display_references attempts to add a filter if 'string' is not ''.
-      $options = array(
-        'table' => 'node',  // Used only when $ids are specified.
-        'string' => '', // content_plugin_display_references attempts to add a
-        'field_string' => '',
-        'match' => '',
-      // filter if 'string' is not ''.
-        'field_id' => 'nid', // Used only when $ids are specified.
-        'ids' => $ids, // Used only when $ids are specified.
-      );
-      $view->display_handler->set_option('content_options', $options);
+  if (!empty($use_exposed_filter)) { // We are using an exposed filter
+    $operators = array(
+      'equals' => '=',
+      'contains' => 'contains',
+      'starts_with' => 'starts',
+    );
+    $view->exposed_input[$use_exposed_filter['expose']['identifier']] = (string)$string;
+    $view->exposed_input[$use_exposed_filter['expose']['operator']] = $operators[(string)$match];
+
+    $view->display_handler->set_option('content_title_field', $use_exposed_filter['field']);
+    // content_plugin_display_references attempts to add a filter if 'string' is not ''.
+    $options = array(
+      'table' => 'node',  // Used only when $ids are specified.
+      'string' => '', // content_plugin_display_references attempts to add a
+      'field_string' => '',
+      'match' => '',
+    // filter if 'string' is not ''.
+      'field_id' => 'nid', // Used only when $ids are specified.
+      'ids' => $ids, // Used only when $ids are specified.
+    );
+    $view->display_handler->set_option('content_options', $options);
+  }
+
+  else { // There is no exposed filter, add filter using the primary field.
+    if (!$fields[$field['primary_field']]) {
+      // TODO: add primary field
     }
+    $referenced_field = $fields[$field['primary_field']];
+    // Used in content_plugin_style_php_array::render(), to get
+    // the 'field' to be used as title.
+    $view->display_handler->set_option('content_title_field', $primary_field);
 
-    else { // There is no exposed filter, add filter using the primary field.
-      if (!$fields[$field['primary_field']]) {
-        // TODO: add primary field
-      }
-//      watchdog('test', 'primary_field: %value', array('%value' => var_export($primary_field, TRUE)));
-//      watchdog('test', 'primary_table: %value', array('%value' => var_export($primary_table, TRUE)));
-      $referenced_field = $fields[$field['primary_field']];
-      // Used in content_plugin_style_php_array::render(), to get
-      // the 'field' to be used as title.
-      $view->display_handler->set_option('content_title_field', $primary_field);
+    // Additional options to let content_plugin_display_references::query()
+    // narrow the results.
+    $options = array(
+      'table' => empty($ids) ? $primary_table : 'node', // Table to search
+      'field_string' => $primary_field, // Field to search
+      'string' => $string, // Search string
+      'match' => $match,
+      'field_id' => 'nid',
+      'ids' => $ids,
+    );
+    $view->display_handler->set_option('content_options', $options);
+  }
 
-      // Additional options to let content_plugin_display_references::query()
-      // narrow the results.
-      $options = array(
-        'table' => empty($ids) ? $primary_table : 'node', // Table to search
-        'field_string' => $primary_field, // Field to search
-        'string' => $string, // Search string
-        'match' => $match,
-        'field_id' => 'nid',
-        'ids' => $ids,
-      );
-      $view->display_handler->set_option('content_options', $options);
-    }
+  // TODO : for consistency, a fair amount of what's below
+  // should be moved to content_plugin_display_references
 
-    // TODO : for consistency, a fair amount of what's below
-    // should be moved to content_plugin_display_references
+  // Limit result set size.
+  if (isset($limit)) {
+    $view->display_handler->set_option('items_per_page', $limit);
+  }
 
-    // Limit result set size.
-    if (isset($limit)) {
-      $view->display_handler->set_option('items_per_page', $limit);
-    }
+  // Get arguments for the view.
+  if (!empty($field['advanced_view_args'])) {
+    // TODO: Support Tokens using token.module ?
+    $view_args = array_map('trim', explode(',', $field['advanced_view_args']));
+  }
+  else {
+    $view_args = array();
+  }
 
-    // Get arguments for the view.
-    if (!empty($field['advanced_view_args'])) {
-      // TODO: Support Tokens using token.module ?
-      $view_args = array_map('trim', explode(',', $field['advanced_view_args']));
-    }
-    else {
-      $view_args = array();
-    }
+  // If not set, make all fields inline and define a separator.
+  $options = $view->display_handler->get_option('row_options');
+  if (empty($options['inline'])) {
+    $options['inline'] = drupal_map_assoc(array_keys($view->get_items('field', $display)));
+  }
+  if (empty($options['separator'])) {
+    $options['separator'] = '-';
+  }
+  $view->display_handler->set_option('row_options', $options);
 
-    // If not set, make all fields inline and define a separator.
-    $options = $view->display_handler->get_option('row_options');
-    if (empty($options['inline'])) {
-      $options['inline'] = drupal_map_assoc(array_keys($view->get_items('field', $display)));
-    }
-    if (empty($options['separator'])) {
-      $options['separator'] = '-';
-    }
-    $view->display_handler->set_option('row_options', $options);
-
-    // Make sure the query is not cached
-    $view->is_cacheable = FALSE;
-watchdog('test', 'primary_field: %value', array('%value' => var_export(serialize($view), TRUE)));
-    // Get the results.
-    $result = $view->execute_display($display, $view_args);
+  // Make sure the query is not cached
+  $view->is_cacheable = FALSE;
+  // Get the results.
+  $result = $view->execute_display($display, $view_args);
     
   return $result;
 }
