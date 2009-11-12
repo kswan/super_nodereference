@@ -58,6 +58,12 @@ function super_nodereference_theme() {
   );
 }
 
+function super_nodereference_views_api() {
+  return array(
+    'api' => 2,
+    'path' => drupal_get_path('module', 'super_nodereference') . '/includes',
+  );
+}
 
 /**
  * Implementation of hook_field_info().
@@ -169,7 +175,7 @@ function super_nodereference_field_settings($op, $field) {
     case 'database columns':
       $columns = array(
         'value' => array('type' => 'varchar', 'length' => 255, 'not null' => FALSE, 'sortable' => TRUE),
-        'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE),
+        'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE, 'index' => TRUE),
       );
       return $columns;
 
@@ -703,7 +709,7 @@ function super_nodereference_autocomplete_validate($element, &$form_state) {
     if (!empty($nid)) { // The value contains [nid:##]
       //list(, $text, $nid) = $matches;
       $potential_references = _super_nodereference_potential_references($field, '', 'equals', array($nid), 1);
-      if (!empty($text) && $potential_references[$nid]['title'] != $text) {
+      if (!empty($text) && trim($potential_references[$nid]['title']) != trim($text)) {
         $error_element = isset($item['_error_element']) ? $item['_error_element'] : '';
         form_set_error($error_element, t('%name: text mismatch. Please check your selection.',
           array('%name' => t($field['widget']['label']))));
@@ -804,7 +810,7 @@ function _super_nodereference_potential_references_views($field, $string = '', $
   }
   
   // We add a display, and let it derive from the 'default' display.
-  $display = $view->add_display('content_references');
+  $display = $view->add_display('super_nodereference_references');
   $view->set_display($display);
   // TODO from merlinofchaos on IRC : arguments using summary view can defeat the style setting.
   // We might also need to check if there's an argument, and set *its* style_plugin as well.
@@ -831,9 +837,10 @@ function _super_nodereference_potential_references_views($field, $string = '', $
       'contains' => 'contains',
       'starts_with' => 'starts',
     );
-    $view->exposed_input[$use_exposed_filter['expose']['identifier']] = (string)$string;
-    $view->exposed_input[$use_exposed_filter['expose']['operator']] = $operators[(string)$match];
-
+//    $view->exposed_data[$use_exposed_filter['expose']['identifier']] = (string)$string;
+//    $view->exposed_data[$use_exposed_filter['expose']['operator']] = $operators[(string)$match];
+    $view->set_exposed_input(array($use_exposed_filter['expose']['identifier'] => (string)$string,
+      $use_exposed_filter['expose']['operator'] => $operators[(string)$match]));
     $view->display_handler->set_option('content_title_field', $use_exposed_filter['field']);
     // content_plugin_display_references attempts to add a filter if 'string' is not ''.
     $options = array(
@@ -991,6 +998,7 @@ function super_nodereference_autocomplete($field_name, $string = '') {
 //        // content.module's implementaion of hook_node_type() has already
 //        // refreshed _content_type_info().
 //        $fields = content_fields();
+//        
 //        foreach ($fields as $field_name => $field) {
 //          if ($field['type'] == 'super_nodereference' && isset($field['referenceable_types'][$info->old_type])) {
 //            $field['referenceable_types'][$info->type] = empty($field['referenceable_types'][$info->old_type]) ? 0 : $info->type;
