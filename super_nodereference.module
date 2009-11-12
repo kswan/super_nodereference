@@ -692,7 +692,6 @@ function super_nodereference_autocomplete_validate($element, &$form_state) {
   $field_key  = $element['#columns'][0];
   $delta = $element['#delta'];
   $value = $element['#value'][$field_key];
-   watchdog('test', 'validate: %value', array('%value' => var_export($value, TRUE)));
   $nid = NULL;
   $validated = array('value' => '', 'nid' => '');
   if (!empty($value)) {
@@ -716,10 +715,7 @@ function super_nodereference_autocomplete_validate($element, &$form_state) {
       }
     }
     else { // The value does not contain [nid:##]
-dsm($text);
       $potential_references = _super_nodereference_potential_references($field, $text, 'equals', NULL, 1);
-//      $potential_references = _super_nodereference_potential_references($field, $text, 'contains', array(), 10);
-dsm($potential_references);
       // If the nid isn't specified, use the first matching entry.  Using
       // Views, the sort order can be set to control how this is handled.
       $reference = array_slice($potential_references, 0, 1, TRUE);
@@ -778,8 +774,6 @@ function _super_nodereference_potential_references($field, $string = '', $match 
 
   // Create unique id for static cache.
   $cid = $field['field_name'] .':'. $match .':'. ($string !== '' ? $string : implode('-', $ids)) .':'. $limit;
-  watchdog('test', 'field1cid: %value', array('%value' => var_export($cid, TRUE)));
-  watchdog('test', 'field1results: %value', array('%value' => var_export($results, TRUE)));
   if (!isset($results[$cid])) {
     $references = FALSE;
     if (module_exists('views') && !empty($field['advanced_view']) && $field['advanced_view'] != '--') {
