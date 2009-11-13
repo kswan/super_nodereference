@@ -73,7 +73,7 @@ function super_nodereference_field_info() {
     'super_nodereference' => array(
       'label' => t('Super Node reference'),
       'description' => t('Store the ID of a related node as an integer value.'),
-      'content_icon' => 'icon_content_noderef.png',
+//      'content_icon' => 'icon_content_noderef.png',
     ),
   );
 }
@@ -133,11 +133,12 @@ function super_nodereference_field_settings($op, $field) {
         );
         $form['advanced']['advanced_view_help'] = array(
           '#value' => t('<div class="description"><p>Note:</p>') .
-            '<ul><li>' . t('Only views that have fields will work for this purpose.') . '</li><li>' . 
-            t('This will discard the "Content types" settings above. Use the view\'s "filters" section instead.') . '</li><li>' . 
+            '<ul><li>' . t('Only views that have fields will work for this purpose.') . '</li><li>' .
+            t('This will discard the "Content types" settings above. Use the view\'s "filters" section instead.') . '</li><li>' .
             t('Use the view\'s "fields" section to display additional informations about candidate nodes on node creation/edition form.') . '</li><li>' .
-            t('Use the view\'s "sort criteria" section to determine the order in which candidate nodes will be displayed.') . '</li><li>' . 
-            t('If the view contains "Exposed Filters", the first exposed filter will be used by all lookup operations.  Otherwise, the primary field (specified above) will be used.') . '</li></ul></div>',
+            t('Use the view\'s "sort criteria" section to determine the order in which candidate nodes will be displayed.') . '</li><li>' .
+            t('If the view contains "Exposed Filters", the first exposed filter will be used by all lookup operations.  Otherwise, the primary field (specified above) will be used.') . '</li><li>' .
+            t('When using an exposed filter, it is strongly recommended to check the "Unlock Operator" option.') . '</li></ul></div>',
           );
         if (count($views) > 1) {
           $form['advanced']['advanced_view'] = array(
@@ -145,7 +146,7 @@ function super_nodereference_field_settings($op, $field) {
             '#title' => t('View used to select the nodes'),
             '#options' => $views,
             '#default_value' => isset($field['advanced_view']) ? $field['advanced_view'] : '--',
-            '#description' => t('<p>Choose the "Views module" view that selects the nodes that can be referenced.</p>'), 
+            '#description' => t('<p>Choose the "Views module" view that selects the nodes that can be referenced.</p>'),
           );
           $form['advanced']['advanced_view_args'] = array(
             '#type' => 'textfield',
@@ -157,10 +158,9 @@ function super_nodereference_field_settings($op, $field) {
         }
         else {
           $form['advanced']['no_view_help'] = array(
-            '#value' => t('<p>The list of nodes that can be referenced can be based on a "Views module" view but no appropriate views were found.</p>') 
+            '#value' => t('<p>The list of nodes that can be referenced can be based on a "Views module" view but no appropriate views were found.</p>')
           );
         }
-        
       }
       return $form;
 
@@ -508,7 +508,7 @@ function super_nodereference_widget_info() {
       'multiple values' => CONTENT_HANDLE_CORE,
       'callbacks' => array(
         'default value' => CONTENT_CALLBACK_DEFAULT,
-      ),            
+      ),
     ),
   );
 }
@@ -714,7 +714,7 @@ function super_nodereference_autocomplete_validate($element, &$form_state) {
         form_set_error($error_element, t('%name: text mismatch. Please check your selection.',
           array('%name' => t($field['widget']['label']))));
       }
-      else { // there is no text ($value == "[nid:##]") or the text 
+      else { // there is no text ($value == "[nid:##]") or the text
         // matches a valid primary field
         $validated['value'] = $potential_references[$nid]['title'];
         $validated['nid'] = $nid;
@@ -729,7 +729,7 @@ function super_nodereference_autocomplete_validate($element, &$form_state) {
         $validated['nid'] = key($reference);
         $validated['value'] = $reference[$validated['nid']]['title'];
       }
-      else if (!empty($field['allow_text'])) {
+      elseif (!empty($field['allow_text'])) {
         $validated['value'] = $value;
       }
       else {
@@ -740,7 +740,6 @@ function super_nodereference_autocomplete_validate($element, &$form_state) {
     }
   }
   form_set_value($element, _super_nodereference_array_to_text($validated), $form_state);
-  
 }
 
 /**
@@ -777,7 +776,7 @@ function super_nodereference_autocomplete_validate($element, &$form_state) {
  */
 function _super_nodereference_potential_references($field, $string = '', $match = 'contains', $ids = array(), $limit = NULL) {
   static $results = array();
-
+  $string = trim($string);
   // Create unique id for static cache.
   $cid = $field['field_name'] .':'. $match .':'. ($string !== '' ? $string : implode('-', $ids)) .':'. $limit;
   if (!isset($results[$cid])) {
@@ -804,11 +803,11 @@ function _super_nodereference_potential_references($field, $string = '', $match 
 function _super_nodereference_potential_references_views($field, $string = '', $match = 'contains', $ids = array(), $limit = NULL) {
   $view_name = $field['advanced_view'];
   $view = views_get_view($view_name);
-  if (empty($view)) { 
+  if (empty($view)) {
     // The specified view is not valid.
     return FALSE;
   }
-  
+
   // We add a display, and let it derive from the 'default' display.
   $display = $view->add_display('super_nodereference_references');
   $view->set_display($display);
@@ -816,12 +815,12 @@ function _super_nodereference_potential_references_views($field, $string = '', $
   // We might also need to check if there's an argument, and set *its* style_plugin as well.
   $view->display_handler->set_option('style_plugin', 'content_php_array_autocomplete');
   $view->display_handler->set_option('row_plugin', 'fields');
-  
+
   $fields = $view->display['default']->display_options['fields'];
   $field_info = content_database_info(content_fields($field['primary_field']));
   $primary_field = $field_info['columns']['value']['column'];
   $primary_table = $fields[$primary_field]['table'];
-    
+
   // Look for exposed filters on this view.
   $filters = $view->get_items('filter');
   foreach ($filters as $filter) {
@@ -908,7 +907,7 @@ function _super_nodereference_potential_references_views($field, $string = '', $
   $view->is_cacheable = FALSE;
   // Get the results.
   $result = $view->execute_display($display, $view_args);
-    
+
   return $result;
 }
 
@@ -957,7 +956,7 @@ function _super_nodereference_potential_references_standard($field, $string = ''
 
   $sql = "SELECT n.nid AS node_nid, f.$primary_field AS node_field,
     n.type AS node_type FROM {node} n JOIN {$primary_table} f ON
-    (n.nid = f.nid AND n.vid = f.vid) $where_clause ORDER BY f.$primary_field, n.type";// WHERE f.field_ecn_number_value LIKE "09-D-1%"
+    (n.nid = f.nid AND n.vid = f.vid) $where_clause ORDER BY f.$primary_field, n.type";
   $sql = db_rewrite_sql($sql);
   $result = $limit ? db_query_range($sql, $args, 0, $limit) : db_query($sql, $args);
   $references = array();
@@ -988,7 +987,7 @@ function super_nodereference_autocomplete($field_name, $string = '') {
 }
 //
 ///**
-// * Implementation of hook_node_type.
+// * Implementation of hook_node_type().
 // */
 //function super_nodereference_node_type($op, $info) {
 //  switch ($op) {
@@ -998,7 +997,7 @@ function super_nodereference_autocomplete($field_name, $string = '') {
 //        // content.module's implementaion of hook_node_type() has already
 //        // refreshed _content_type_info().
 //        $fields = content_fields();
-//        
+//
 //        foreach ($fields as $field_name => $field) {
 //          if ($field['type'] == 'super_nodereference' && isset($field['referenceable_types'][$info->old_type])) {
 //            $field['referenceable_types'][$info->type] = empty($field['referenceable_types'][$info->old_type]) ? 0 : $info->type;
