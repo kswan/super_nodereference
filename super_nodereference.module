@@ -25,7 +25,14 @@ function super_nodereference_menu() {
   return $items;
 }
 
-
+/**
+ * Implementation of hook_init().
+ */
+function super_nodereference_init() {
+  if (module_exists('token') && !function_exists('super_nodereference_token_values')) {
+    module_load_include('inc', 'super_nodereference', 'includes/super_nodereference.token');
+  }
+}
 
 /**
  * Implementation of hook_theme().
