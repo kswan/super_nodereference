@@ -1,5 +1,9 @@
 <?php
-// $Id:
+// $Id$
+
+/**
+ * @file
+ */
 
 function super_nodereference_views_plugins() {
   $plugins = array(
