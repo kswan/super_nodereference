@@ -938,10 +938,15 @@ function _super_nodereference_potential_references_standard($field, $string = ''
   if (!count($related_types)) {
     return array();
   }
-  $test = content_database_info(content_fields($field['primary_field']));
-  $primary_field = $test['columns']['value']['column'];
-  $primary_table = $test['table'];
-
+  if ($field['primary_field'] == 'title') {
+    $primary_field = 'title';
+    $primary_table = 'node';
+  }
+  else {
+    $test = content_database_info(content_fields($field['primary_field']));
+    $primary_field = $test['columns']['value']['column'];
+    $primary_table = $test['table'];
+  }
   if ($string !== '') {
     $match_operators = array(
       'contains' => "LIKE '%%%s%%'",
