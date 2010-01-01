@@ -317,7 +317,7 @@ function super_nodereference_field($op, &$node, $field, &$items, $teaser, $page)
 }
 
 function _super_nodereference_text_to_array($value) {
-  preg_match('/^(?:\s*|(.*) )?\[\s*nid\s*:\s*(\d+)\s*\]$/', $value, $matches);
+  preg_match('/^(?:\s*|(.*) )?\[\s*nid\s*:\s*(\d+)\s*\]$/i', $value, $matches);
   if (!empty($matches)) {
     // Explicit [nid:##].
     list(, $value, $nid) = $matches;
@@ -396,7 +396,7 @@ function theme_super_nodereference_formatter_default($element) {
     $node = node_load($nid);
     $field = content_fields($element['#field_name'], $element['#type_name']);
     $title = _super_nodereference_potential_references($field, '', 'equals', array($nid), 1);
-    $output = l($title[$nid]['rendered'], $node->path, array('html' => TRUE));
+    $output = l($title[$nid]['rendered'], "node/$nid", array('html' => TRUE));
 //    $output = $title[$nid]['rendered'];
   }
   else {
@@ -423,7 +423,7 @@ function theme_super_nodereference_formatter_plain($element) {
 }
 
 /**
- * Theme function for 'default' nodereference field formatter.
+ * Theme function for 'title_link' nodereference field formatter.
  */
 function theme_super_nodereference_formatter_title_link($element) {
   $output = '';
@@ -431,7 +431,7 @@ function theme_super_nodereference_formatter_title_link($element) {
   if (!empty($nid)) {
     $node = node_load($nid);
     $title = _super_nodereference_title($nid);
-    $output = l($title, $node->path);
+    $output = l($title, "node/$nid");
   }
   else {
     $output = check_plain($element['#item']['value']);
@@ -440,7 +440,7 @@ function theme_super_nodereference_formatter_title_link($element) {
 }
 
 /**
- * Theme function for 'default' nodereference field formatter.
+ * Theme function for 'title_plain' nodereference field formatter.
  */
 function theme_super_nodereference_formatter_title_plain($element) {
   $output = '';
