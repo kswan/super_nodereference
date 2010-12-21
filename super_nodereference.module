@@ -615,9 +615,15 @@ function super_nodereference_widget_settings($op, $widget) {
  */
 function super_nodereference_widget(&$form, &$form_state, $field, $items, $delta = 0) {
   // lookup the value of the primary field (in case the target field has changed since the connection was made)
-  $node = node_load($items[$delta]['nid']);
-  $primary = $node->$field['primary_field'];
-  $items[$delta]['value'] = $primary[0]['value'];
+  if (is_numeric($items[$delta]['nid'])) {
+  	$node = node_load($items[$delta]['nid']);
+    $primary = $node->$field['primary_field'];
+    $items[$delta]['value'] = $primary[0]['value'];
+  }
+  elseif (!$field['allow_text']) {
+  	drupal_set_message(t('One of your super_nodereference fields has text only input. It does not actually reference another node.'), 'warning', FALSE);
+  }
+
 
   switch ($field['widget']['type']) {
     case 'super_nodereference_autocomplete':
@@ -737,15 +743,15 @@ function super_nodereference_autocomplete_validate($element, &$form_state) {
       // If the nid isn't specified, use the first matching entry.  Using
       // Views, the sort order can be set to control how this is handled.
       $reference = array_slice($potential_references, 0, 1, TRUE);
-      if (!empty($reference)) {
+	  if (!empty($reference)) {
         $validated['nid'] = key($reference);
         $validated['value'] = $reference[$validated['nid']]['title'];
       }
-      elseif (!empty($field['allow_text'])) {
+      elseif ($field['allow_text']) {
         $validated['value'] = $value;
       }
       else {
-        $error_element = isset($item['_error_element']) ? $item['_error_element'] : '';
+      	$error_element = $field['field_name'] . '][' . $delta . ']['. $field_key . '][value';
         form_set_error($error_element, t('%name: valid record not found. Please check your selection.',
           array('%name' => t($field['widget']['label']))));
       }
