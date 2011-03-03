@@ -615,7 +615,10 @@ function super_nodereference_widget_settings($op, $widget) {
  */
 function super_nodereference_widget(&$form, &$form_state, $field, $items, $delta = 0) {
   // lookup the value of the primary field (in case the target field has changed since the connection was made)
-  if (is_numeric($items[$delta]['nid'])) {
+  if($items[$delta]['nid'] !== '') {
+    drupal_set_message(t('One of your super_nodereference fields is empty.'), 'message', FALSE);
+  }
+  elseif (is_numeric($items[$delta]['nid'])) {
   	$node = node_load($items[$delta]['nid']);
     $primary = $node->$field['primary_field'];
     $items[$delta]['value'] = $primary[0]['value'];
