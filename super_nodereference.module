@@ -307,6 +307,7 @@ function super_nodereference_field($op, &$node, $field, &$items, $teaser, $page)
       }
       return $addition;
 
+    case 'insert':
     case 'update':
       foreach ($items as $delta => $item) {
         $items[$delta] = _super_nodereference_text_to_array($item['value']);
